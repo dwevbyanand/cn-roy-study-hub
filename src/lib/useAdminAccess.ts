@@ -7,20 +7,21 @@ export function useAdminAccess() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
- const client = supabase
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
 
-if (!client) {
-  setLoading(false)
-  return
-}
-const supabaseClient = client!
+    const client = supabase
     let active = true
-    let requestId = 0
 
-    async function checkAdmin(userId: string | null) {
-      const currentRequest = ++requestId
+    async function checkAdmin() {
+      const {
+        data: { user },
+        error: authError,
+      } = await client.auth.getUser()
 
-      if (!userId) {
+      if (authError || !user) {
         if (active) {
           setIsAdmin(false)
           setLoading(false)
@@ -28,34 +29,26 @@ const supabaseClient = client!
         return
       }
 
-      setLoading(true)
-
-      const { data, error } = await supabaseClient
+      const { data, error } = await client
         .from('profiles')
         .select('role')
-        .eq('id', userId)
+        .eq('id', user.id)
         .maybeSingle()
 
-      if (!active || currentRequest !== requestId) return
-
-      setIsAdmin(!error && data?.role === 'admin')
-      setLoading(false)
+      if (active) {
+        setIsAdmin(!error && data?.role === 'admin')
+        setLoading(false)
+      }
     }
 
-    supabaseClient.auth.getSession().then(({ data }) => {
-      if (active) {
-        void checkAdmin(data.session?.user.id ?? null)
+    void checkAdmin()
+
+    const { data: listener } = client.auth.onAuthStateChange(
+      (event) => {
+        if (event === 'TOKEN_REFRESHED') return
+        void checkAdmin()
       }
-    })
-
-    const { data: listener } =
-      supabaseClient.auth.onAuthStateChange((_event, session) => {
-        const userId = session?.user.id ?? null
-
-        setTimeout(() => {
-          if (active) void checkAdmin(userId)
-        }, 0)
-      })
+    )
 
     return () => {
       active = false

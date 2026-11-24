@@ -19,6 +19,18 @@ type Subject = {
   description: string | null
 }
 
+function getErrorMessage(error: unknown): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error
+  ) {
+    return String(error.message)
+  }
+
+  return String(error)
+}
+
 export function StudioSubjects() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [editing, setEditing] = useState<Subject | null>(null)
@@ -43,6 +55,7 @@ export function StudioSubjects() {
       .order('created_at', { ascending: true })
 
     if (error) {
+      console.error('Load subjects error:', error)
       setMessage(error.message)
       return
     }
@@ -77,7 +90,10 @@ export function StudioSubjects() {
   async function saveSubject(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
-    if (!supabase) return
+    if (!supabase) {
+      setMessage('Supabase is not configured.')
+      return
+    }
 
     if (!name.trim()) {
       setMessage('Please enter a subject name.')
@@ -116,19 +132,19 @@ export function StudioSubjects() {
 
       resetForm()
       await loadSubjects()
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Unable to save subject.'
-      )
+    } catch (error: unknown) {
+      console.error('Save subject error:', error)
+      setMessage(`Unable to save subject: ${getErrorMessage(error)}`)
     } finally {
       setSaving(false)
     }
   }
 
   async function deleteSubject(subject: Subject) {
-    if (!supabase) return
+    if (!supabase) {
+      setMessage('Supabase is not configured.')
+      return
+    }
 
     if (!confirm(`Delete "${subject.name}"?`)) return
 
@@ -138,7 +154,8 @@ export function StudioSubjects() {
       .eq('id', subject.id)
 
     if (error) {
-      setMessage(error.message)
+      console.error('Delete subject error:', error)
+      setMessage(`Unable to delete subject: ${error.message}`)
       return
     }
 
@@ -158,7 +175,8 @@ export function StudioSubjects() {
   return (
     <section className="page">
       <Link to="/studio" className="studio-back">
-        <ArrowLeft size={16} /> Back to Creator Studio
+        <ArrowLeft size={16} />
+        Back to Creator Studio
       </Link>
 
       <div className="page-heading">
@@ -229,7 +247,8 @@ export function StudioSubjects() {
               onClick={resetForm}
               disabled={saving}
             >
-              <X size={16} /> Cancel Editing
+              <X size={16} />
+              Cancel Editing
             </button>
           )}
         </form>
@@ -257,14 +276,17 @@ export function StudioSubjects() {
                 {termLabel(subject.term)}
               </span>
 
-              {subject.description && <p>{subject.description}</p>}
+              {subject.description && (
+                <p>{subject.description}</p>
+              )}
 
               <button
                 type="button"
                 className="outline"
                 onClick={() => startEditing(subject)}
               >
-                <Pencil size={16} /> Edit
+                <Pencil size={16} />
+                Edit
               </button>
 
               <button
@@ -272,7 +294,8 @@ export function StudioSubjects() {
                 className="outline"
                 onClick={() => void deleteSubject(subject)}
               >
-                <Trash2 size={16} /> Delete
+                <Trash2 size={16} />
+                Delete
               </button>
             </article>
           ))}
