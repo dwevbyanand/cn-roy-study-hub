@@ -1,12 +1,13 @@
 
 import { useMemo, useState } from 'react'
-import { managementGrades } from '../features/grades/management-grades'
+import { managementGrades, managementCourses, predictManagementGrade } from '../features/grades/management-grades'
 import {
   dataScienceCourses,
   predictDataScienceGrade,
 } from '../features/grades/data-science-grades'
 
 type Tab = 'predictor' | 'endterm' | 'cgpa'
+type Section = 'data-science' | 'management'
 
 type CGPARow = {
   id: number
@@ -16,12 +17,14 @@ type CGPARow = {
 
 export function Calculators() {
   const [tab, setTab] = useState<Tab>('predictor')
+  const [section, setSection] = useState<Section>('data-science')
   const [courseId, setCourseId] = useState('math')
 
   const [eligibilityAverage, setEligibilityAverage] = useState('60')
   const [q1, setQ1] = useState('60')
   const [q2, setQ2] = useState('60')
   const [final, setFinal] = useState('60')
+  const [gaa, setGaa] = useState('60')
   const [bonus, setBonus] = useState('0')
 
   const [weekly, setWeekly] = useState<string[]>(Array(8).fill('60'))
@@ -33,29 +36,55 @@ export function Calculators() {
   ])
   const [nextId, setNextId] = useState(2)
 
-  const course = dataScienceCourses.find(
-    item => item.id === courseId
-  )!
+  const dataScienceCourse = dataScienceCourses.find(
+    item => item.id === courseId,
+  )
 
-  const isPython = courseId === 'python'
-  const hasStatisticsBonus = course.formula === 'statistics'
-  const hasMath2Bonus = course.formula === 'math2'
+  const managementCourse = managementCourses.find(
+    item => item.id === courseId,
+  )
+
+  const course = section === 'data-science'
+    ? dataScienceCourse
+    : managementCourse
+
+  const isPython = section === 'data-science' && courseId === 'python'
+  const isDiploma = section === 'management' && managementCourse?.level === 'Diploma'
+
+  const hasStatisticsBonus =
+    section === 'data-science' && course?.formula === 'statistics'
+
+  const hasMath2Bonus =
+    section === 'data-science' && course?.formula === 'math2'
+
   const hasPythonBonus = isPython
 
-  // SCT is assumed completed because its checkbox has been removed.
-  const sct = true
+  const hasManagementStatsBonus =
+    section === 'management' && managementCourse?.formula === 'statistics'
 
-  const bonusLabel = hasStatisticsBonus
+  const hasBonus =
+    hasStatisticsBonus ||
+    hasMath2Bonus ||
+    hasPythonBonus ||
+    hasManagementStatsBonus
+
+  const bonusLabel = hasStatisticsBonus || hasManagementStatsBonus
     ? 'Extra-activity bonus (maximum 5)'
     : hasMath2Bonus
       ? 'Extra-activity bonus (maximum 6)'
       : 'SCT bonus marks awarded'
 
-  const bonusMaximum = hasStatisticsBonus
+  const bonusMaximum = hasStatisticsBonus || hasManagementStatsBonus
     ? 5
     : hasMath2Bonus
       ? 6
       : 100
+
+  // SCT is assumed completed because its checkbox was removed.
+  const sct = true
+
+  const validNumber = (value: string) =>
+    value.trim() !== '' && Number.isFinite(Number(value))
 
   const input = useMemo(() => ({
     eligibilityAverage: Number(eligibilityAverage),
@@ -79,64 +108,82 @@ export function Calculators() {
     oppe2,
   ])
 
+  const inputsValid = [
+    eligibilityAverage,
+    q1,
+    q2,
+    final,
+    bonus,
+    ...(isDiploma ? [gaa] : []),
+    ...(isPython ? [...weekly, oppe1, oppe2] : []),
+  ].every(validNumber)
+
   const prediction = useMemo(() => {
-    const requiredValues = [
-      eligibilityAverage,
-      q1,
-      q2,
-      bonus,
-      final,
-    ]
+    if (!course || !inputsValid) return null
 
-    if (
-      requiredValues.some(value =>
-        value.trim() === '' || !Number.isFinite(Number(value))
-      )
-    ) return null
-
-    if (isPython) {
-      if (weekly.some(value =>
-        value.trim() === '' || !Number.isFinite(Number(value))
-      )) return null
-
-      if (
-        oppe1.trim() === '' ||
-        oppe2.trim() === '' ||
-        !Number.isFinite(Number(oppe1)) ||
-        !Number.isFinite(Number(oppe2))
-      ) return null
+    if (section === 'data-science') {
+      return predictDataScienceGrade(dataScienceCourse!, input)
     }
 
-    return predictDataScienceGrade(course, input)
+    return predictManagementGrade(managementCourse!, {
+      eligibilityAverage: Number(eligibilityAverage),
+      quizzes: [Number(q1), Number(q2)],
+      final: Number(final),
+      gaa: isDiploma ? Number(gaa) : null,
+      bonus: Number(bonus),
+    })
   }, [
     course,
+    inputsValid,
+    section,
+    dataScienceCourse,
+    managementCourse,
     input,
     eligibilityAverage,
     q1,
     q2,
-    bonus,
-    weekly,
-    oppe1,
-    oppe2,
     final,
-    isPython,
+    gaa,
+    bonus,
+    isDiploma,
   ])
 
   const minimumFinal = useMemo(() => {
-    for (let mark = 0; mark <= 100; mark++) {
-      const result = predictDataScienceGrade(course, {
-        ...input,
-        final: mark,
-        finalAbsent: false,
-      })
+    if (!course || !inputsValid) return null
 
-      if (result.status === 'Pass') {
-        return mark
-      }
+    for (let mark = 0; mark <= 100; mark++) {
+      const result = section === 'data-science'
+        ? predictDataScienceGrade(dataScienceCourse!, {
+            ...input,
+            final: mark,
+            finalAbsent: false,
+          })
+        : predictManagementGrade(managementCourse!, {
+            eligibilityAverage: Number(eligibilityAverage),
+            quizzes: [Number(q1), Number(q2)],
+            final: mark,
+            gaa: isDiploma ? Number(gaa) : null,
+            bonus: Number(bonus),
+          })
+
+      if (result.status === 'Pass') return mark
     }
 
     return null
-  }, [course, input])
+  }, [
+    course,
+    inputsValid,
+    section,
+    dataScienceCourse,
+    managementCourse,
+    input,
+    eligibilityAverage,
+    q1,
+    q2,
+    gaa,
+    bonus,
+    isDiploma,
+  ])
 
   const cgpaResult = useMemo(() => {
     const valid = rows.map(row => ({
@@ -151,11 +198,13 @@ export function Calculators() {
     )
 
     const credits = valid.reduce(
-      (sum, row) => sum + row.credits, 0
+      (sum, row) => sum + row.credits,
+      0,
     )
 
     const weighted = valid.reduce(
-      (sum, row) => sum + row.credits * row.points, 0
+      (sum, row) => sum + row.credits * row.points,
+      0,
     )
 
     return credits > 0
@@ -165,7 +214,7 @@ export function Calculators() {
 
   function updateWeekly(index: number, value: string) {
     setWeekly(old =>
-      old.map((score, i) => i === index ? value : score)
+      old.map((score, i) => i === index ? value : score),
     )
   }
 
@@ -173,7 +222,7 @@ export function Calculators() {
     label: string,
     value: string,
     setter: (value: string) => void,
-    max = 100
+    max = 100,
   ) {
     return (
       <label>
@@ -190,13 +239,19 @@ export function Calculators() {
     )
   }
 
+  function changeSection(value: Section) {
+    setSection(value)
+    setCourseId('math')
+    setBonus('0')
+  }
+
   return (
     <>
       <div className="page-heading">
         <h1>Academic Calculators</h1>
         <p>
           Grade prediction, end-term marks and CGPA
-          for IITM BS Foundation.
+          for IITM BS programmes.
         </p>
       </div>
 
@@ -232,6 +287,19 @@ export function Calculators() {
           </h2>
 
           <label>
+            Select programme
+            <select
+              value={section}
+              onChange={event =>
+                changeSection(event.target.value as Section)
+              }
+            >
+              <option value="data-science">Data Science</option>
+              <option value="management">Management</option>
+            </select>
+          </label>
+
+          <label>
             Select course
             <select
               value={courseId}
@@ -240,7 +308,10 @@ export function Calculators() {
                 setBonus('0')
               }}
             >
-              {dataScienceCourses.map(item => (
+              {(section === 'data-science'
+                ? dataScienceCourses
+                : managementCourses
+              ).map(item => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                 </option>
@@ -253,7 +324,7 @@ export function Calculators() {
           {numberInput(
             'Eligibility average (%)',
             eligibilityAverage,
-            setEligibilityAverage
+            setEligibilityAverage,
           )}
 
           <p className="muted">
@@ -264,6 +335,16 @@ export function Calculators() {
             {numberInput('Quiz 1 (%)', q1, setQ1)}
             {numberInput('Quiz 2 (%)', q2, setQ2)}
           </div>
+
+          {isDiploma && (
+            <>
+              <h3>General Assessment Average</h3>
+              {numberInput('GAA (%)', gaa, setGaa)}
+              <p className="muted">
+                Diploma course calculations include GAA.
+              </p>
+            </>
+          )}
 
           {isPython && (
             <>
@@ -308,10 +389,10 @@ export function Calculators() {
               {numberInput(
                 'End-term marks (%)',
                 final,
-                setFinal
+                setFinal,
               )}
 
-              {(hasStatisticsBonus || hasMath2Bonus || hasPythonBonus) && (
+              {hasBonus && (
                 <>
                   <h3>Bonus marks</h3>
 
@@ -319,7 +400,7 @@ export function Calculators() {
                     bonusLabel,
                     bonus,
                     setBonus,
-                    bonusMaximum
+                    bonusMaximum,
                   )}
 
                   <p className="muted">
@@ -350,12 +431,17 @@ export function Calculators() {
                   </strong>
 
                   <p>Grade: {prediction.letter ?? 'Not available'}</p>
-                  <p>Grade points: {prediction.points ?? 'Not available'}</p>
+                  <p>
+                    Grade points: {prediction.points ?? 'Not available'}
+                  </p>
                   <p>Status: {prediction.status}</p>
                 </>
               ) : (
                 <p>
-                  {prediction?.status ?? 'Enter valid assessment scores.'}
+                  {prediction?.status ??
+                    (isDiploma && !validNumber(gaa)
+                      ? 'Enter a valid GAA score.'
+                      : 'Enter valid assessment scores.')}
                 </p>
               )
             ) : (
