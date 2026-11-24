@@ -2,7 +2,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   BookOpen, Calculator, FileText, GraduationCap,
-  Home, Info, Library, Menu, Youtube, Settings
+  Home, Info, Library, Menu, Youtube, Settings, LogIn
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAdminAccess } from '../lib/useAdminAccess'
@@ -16,6 +16,7 @@ const nav = [
   { to: '/calculators', label: 'Calculators', icon: Calculator },
   { to: '/courses', label: 'Courses', icon: GraduationCap },
   { to: '/about', label: 'About', icon: Info },
+  { to: '/login', label: 'Login', icon: LogIn },
 ]
 
 export function Layout() {
